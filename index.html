@@ -1,421 +1,688 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>KCS Analytics Dashboard</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Sarabun', sans-serif; letter-spacing: -0.01em; margin:0; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: #E53E3E; }
-    select { border: none !important; appearance: none; -webkit-appearance: none; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KCS Group Sales Dashboard 2569</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Sarabun', sans-serif; background-color: #f8fafc; color: #1e293b; overflow-x: hidden; }
+        .sidebar-item:hover { background-color: #fef2f2; color: #dc2626; }
+        .active-nav { background-color: #dc2626; color: white; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.25); }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; transition: transform 0.2s; }
+        .card:hover { transform: translateY(-2px); }
+        .chart-container { position: relative; height: 300px; width: 100%; }
+        .table-header { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #64748b; background: #f1f5f9; }
+        
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+        .modal-content { background: white; margin: 5% auto; padding: 0; border-radius: 16px; width: 90%; max-width: 600px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); animation: slideIn 0.3s ease; }
+        
+        @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        #notification { position: fixed; top: 20px; right: 20px; z-index: 1100; display: none; animation: fadeIn 0.3s ease; }
+        
+        .month-col-highlight { background-color: #fff1f2 !important; border-x: 1px solid #fecaca; }
+        .row-group-header { background-color: #f8fafc; border-left: 4px solid #94a3b8; }
+        .row-coffee { border-left: 4px solid #dc2626; }
+        .row-mushroom { border-left: 4px solid #ea580c; }
+        .text-coffee { color: #dc2626; }
+        .text-mushroom { color: #ea580c; }
+
+        /* Analysis Box Style */
+        .analysis-card { background: linear-gradient(135deg, #ffffff 0%, #fef2f2 100%); border-left: 6px solid #dc2626; }
+    </style>
 </head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel">
+<body class="flex min-h-screen">
 
-const { useState, useMemo } = React;
-const { 
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, 
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  ComposedChart, AreaChart, Area
-} = Recharts;
-const { 
-  LayoutDashboard, Target, Globe, Truck, Wallet, 
-  Upload, FileSpreadsheet, TrendingUp, TrendingDown, Package, Users, 
-  ShoppingCart, AlertCircle, CheckCircle2, Loader2, Clock, Info, Maximize2, X
-} = lucide;
-
-
-// --- Configuration & Style ---
-const PRIMARY_RED = "#E53E3E";
-const DARK_RED = "#9B2C2C";
-const TEXT_BLACK = "#1A202C";
-
-// --- Global Helpers ---
-const formatM = (val) => {
-  if (val === 0 || !val) return "0.00 M";
-  return (val / 1000000).toFixed(2) + ' M';
-};
-
-const formatFull = (val) => val?.toLocaleString('th-TH', { maximumFractionDigits: 2 }) || "0.00";
-
-const calculateChange = (curr, prev) => {
-  if (!prev || prev === 0) return 0;
-  return ((curr - prev) / prev) * 100;
-};
-
-// --- Channels Definition ---
-const channelsDef = [
-  { id: 'online', label: 'ออนไลน์', key: 'online', coffee: 'onlineCoffee', mushroom: 'onlineMushroom', target: 'onlineTarget' },
-  { id: 'vansales', label: 'หน่วยรถ', key: 'van', coffee: 'vanCoffee', mushroom: 'vanMushroom', target: 'vanTarget' },
-  { id: 'mt_consign', label: 'MT & Consign', key: 'mt', coffee: 'mtCoffee', mushroom: 'mtMushroom', target: 'mtTarget' },
-  { id: 'admin', label: 'Admin', key: 'admin', coffee: 'adminCoffee', mushroom: 'adminMushroom', target: 'adminTarget' },
-  { id: 'oem', label: 'OEM', key: 'oem', coffee: 'oemCoffee', mushroom: 'oemMushroom', target: 'oemTarget' },
-  { id: 'mushroom', label: 'เห็ดทอด', key: 'fried', coffee: 'friedCoffee', mushroom: 'friedMushroom', target: 'friedTarget' },
-  { id: 'others', label: 'กาแฟ อื่นๆ', key: 'others', coffee: 'othersCoffee', mushroom: 'othersMushroom', target: 'othersTarget' }
-];
-
-const App = () => {
-  const [activeTab, setActiveTab] = useState('sales_dashboard');
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const [expandedChart, setExpandedChart] = useState(null); 
-  
-  // Global Filters
-  const [filterPeriod, setFilterPeriod] = useState('มี.ค.'); 
-  const [filterProduct, setFilterProduct] = useState('กาแฟ+เห็ด');
-  const [filterChannel, setFilterChannel] = useState('ทั้งหมด');
-
-  // --- Master Data (Strictly mapped from User's table) ---
-  const data69 = useMemo(() => [
-    { 
-      month: 'ม.ค.', 
-      online: 3039888.23, onlineCoffee: 2987897.25, onlineMushroom: 51990.98, onlineTarget: 2800000,
-      van: 1916788.04, vanCoffee: 1786847.64, vanMushroom: 129940.40, vanTarget: 1912896,
-      mt: 272427.51, mtCoffee: 272427.51, mtMushroom: 0, mtTarget: 1166667,
-      admin: 175100.00, adminCoffee: 175100, adminMushroom: 0, adminTarget: 8333,
-      oem: 462240.00, oemCoffee: 462240, oemMushroom: 0, oemTarget: 500000,
-      fried: 327286.50, friedCoffee: 0, friedMushroom: 327286.50, friedTarget: 241667,
-      others: 201025.00, othersCoffee: 201025, othersMushroom: 0, othersTarget: 0,
-      total: 6394755.28, coffee: 5885537.40, mushroom: 509217.88, target: 6636380
-    },
-    { 
-      month: 'ก.พ.', 
-      online: 4498427.79, onlineCoffee: 4445134.57, onlineMushroom: 53293.22, onlineTarget: 3100000,
-      van: 1899181.16, vanCoffee: 1759488.16, vanMushroom: 139693.00, vanTarget: 2943025,
-      mt: 296728.35, mtCoffee: 296728.35, mtMushroom: 0, mtTarget: 1166667,
-      admin: 31888.00, adminCoffee: 31888, adminMushroom: 0, adminTarget: 8333,
-      oem: 407723.50, oemCoffee: 407723.50, oemMushroom: 0, oemTarget: 500000,
-      fried: 246590.00, friedCoffee: 0, friedMushroom: 246590.00, friedTarget: 241667,
-      others: 223333.00, othersCoffee: 223333, othersMushroom: 0, othersTarget: 0,
-      total: 7603871.80, coffee: 7164295.58, mushroom: 439576.22, target: 7959692
-    },
-    { 
-      month: 'มี.ค.', 
-      online: 4759281.19, onlineCoffee: 4686860.00, onlineMushroom: 72421.19, onlineTarget: 3400000,
-      van: 1726210.40, vanCoffee: 1587774.00, vanMushroom: 138436.40, vanTarget: 2207391,
-      mt: 464554.77, mtCoffee: 464554.77, mtMushroom: 0, mtTarget: 1166667,
-      admin: 29950.00, adminCoffee: 29950, adminMushroom: 0, adminTarget: 8333,
-      oem: 348482.95, oemCoffee: 348482.95, oemMushroom: 0, oemTarget: 500000,
-      fried: 285367.20, friedCoffee: 0, friedMushroom: 285367.20, friedTarget: 241667,
-      others: 156821.50, othersCoffee: 156821.50, othersMushroom: 0, othersTarget: 0,
-      total: 7770668.01, coffee: 7274443.22, mushroom: 496224.79, target: 7524058
-    },
-  ], []);
-
-  const yearlyComparison = [
-    { name: 'ปี 68 (จริง)', value: 55720000, fill: '#FEB2B2' },
-    { name: 'ปี 69 (สะสม)', value: 21769295, fill: PRIMARY_RED },
-    { name: 'ปี 69 (เป้าหมาย)', value: 100000000, fill: DARK_RED },
-  ];
-
-  // --- KPI Reactive Logic ---
-  const kpiData = useMemo(() => {
-    let monthsToSum = [];
-    if (filterPeriod === 'Q1') monthsToSum = data69.slice(0, 3);
-    else if (filterPeriod === 'ปี 69') monthsToSum = data69;
-    else monthsToSum = data69.filter(d => d.month === filterPeriod);
-
-    let prevMonths = [];
-    if (filterPeriod === 'มี.ค.') prevMonths = data69.filter(d => d.month === 'ก.พ.');
-    else if (filterPeriod === 'ก.พ.') prevMonths = data69.filter(d => d.month === 'ม.ค.');
-
-    const aggregate = (months) => {
-      if (months.length === 0) return { total: 0, coffee: 0, mushroom: 0, target: 0 };
-      const ch = channelsDef.find(c => c.label === filterChannel);
-      return months.reduce((acc, d) => {
-        let t = 0, cf = 0, m = 0, tg = 0;
-        if (!ch) { t = d.total; cf = d.coffee; m = d.mushroom; tg = d.target; }
-        else { 
-            t = d[ch.key] || 0; 
-            cf = d[ch.coffee] || 0; 
-            m = d[ch.mushroom] || 0; 
-            tg = d[ch.target] || 0; 
-        }
-        if (filterProduct === 'กาแฟ') t = cf;
-        if (filterProduct === 'เห็ด') t = m;
-        return { total: acc.total + t, coffee: acc.coffee + cf, mushroom: acc.mushroom + m, target: acc.target + tg };
-      }, { total: 0, coffee: 0, mushroom: 0, target: 0 });
-    };
-
-    return { now: aggregate(monthsToSum), before: aggregate(prevMonths) };
-  }, [filterPeriod, filterProduct, filterChannel, data69]);
-
-  // --- Export Function ---
-  const handleExport = () => {
-    let csv = "ข้อมูลรายงาน KCS Analytics\n";
-    csv += `ตัวกรองปัจจุบัน: ${filterPeriod} | ${filterProduct} | ${filterChannel}\n\n`;
-    
-    // Section 1: KPI Cards
-    csv += "--- สรุป KPI ---\n";
-    csv += "KPI,มูลค่า (บาท),MoM (%)\n";
-    csv += `ยอดขายรวม,${kpiData.now.total.toFixed(2)},${calculateChange(kpiData.now.total, kpiData.before.total).toFixed(2)}%\n`;
-    csv += `ยอดขายกาแฟ,${kpiData.now.coffee.toFixed(2)},${calculateChange(kpiData.now.coffee, kpiData.before.coffee).toFixed(2)}%\n`;
-    csv += `ยอดขายเห็ด,${kpiData.now.mushroom.toFixed(2)},${calculateChange(kpiData.now.mushroom, kpiData.before.mushroom).toFixed(2)}%\n`;
-    csv += `เป้าหมาย,${kpiData.now.target.toFixed(2)},-\n\n`;
-
-    // Section 2: Channel Table
-    csv += "--- ยอดขายแยกตามช่องทาง (บาท) ---\n";
-    csv += "ช่องทาง," + data69.map(m => m.month).join(",") + ",รวมสะสม\n";
-    channelsDef.forEach(ch => {
-      let row = [ch.label];
-      let sum = 0;
-      data69.forEach(m => {
-        let val = m[ch.key] || 0;
-        row.push(val.toFixed(2));
-        sum += val;
-      });
-      row.push(sum.toFixed(2));
-      csv += row.join(",") + "\n";
-    });
-    csv += "สรุปรวมทั้งหมด," + data69.map(m => m.total.toFixed(2)).join(",") + ",21769295.09\n\n";
-
-    // Section 3: Product Analysis
-    csv += "--- วิเคราะห์รายประเภทสินค้า (บาท) ---\n";
-    csv += "ประเภท," + data69.map(m => m.month).join(",") + ",รวมสะสม\n";
-    const cRow = ["กาแฟ"]; let cSum = 0; data69.forEach(m => { cRow.push(m.coffee.toFixed(2)); cSum += m.coffee; }); cRow.push(cSum.toFixed(2));
-    const mRow = ["เห็ด"]; let mSum = 0; data69.forEach(m => { mRow.push(m.mushroom.toFixed(2)); mSum += m.mushroom; }); mRow.push(mSum.toFixed(2));
-    csv += cRow.join(",") + "\n" + mRow.join(",") + "\n";
-
-    const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `KCS_Export_${filterPeriod}_${filterChannel}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  // --- Table Content Helpers ---
-  const renderChannelTable = (isFull) => (
-    <div className="overflow-x-auto w-full">
-      <table className={`${isFull ? 'text-sm' : 'text-[11px]'} w-full text-left border-collapse`}>
-        <thead className="bg-gray-50 border-b">
-          <tr>
-            <th className="p-3 font-bold sticky left-0 bg-gray-50 z-10 border-r">ช่องทางการขาย</th>
-            {data69.map(m => <th key={m.month} className="p-3 text-center">{m.month}</th>)}
-            <th className="p-3 text-center text-red-600 font-bold sticky right-0 bg-gray-50 border-l">รวมปี 69</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {channelsDef.map(ch => (
-            <tr key={ch.id} className="hover:bg-red-50 transition-colors">
-              <td className="p-3 font-bold text-gray-800 sticky left-0 bg-white border-r">{ch.label}</td>
-              {data69.map(m => <td key={m.month} className="p-3 text-center">{formatM(m[ch.key])}</td>)}
-              <td className="p-3 text-center font-bold text-red-600 sticky right-0 bg-white border-l">
-                {formatM(data69.reduce((s, m) => s + (m[ch.key] || 0), 0))}
-              </td>
-            </tr>
-          ))}
-          <tr className="bg-red-50 font-black border-t-2 border-red-200">
-            <td className="p-3 text-red-700 sticky left-0 bg-red-50 border-r uppercase text-[10px]">สรุปรวมทั้งหมด</td>
-            {data69.map(m => <td key={m.month} className="p-3 text-center text-red-700">{formatM(m.total)}</td>)}
-            <td className="p-3 text-center text-red-700 sticky right-0 bg-red-50 border-l">{formatM(21769295)}</td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Notification Overlay -->
+    <div id="notification" class="bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-gray-700">
+        <div class="bg-green-500 p-2 rounded-full"><i class="fa-solid fa-check text-white"></i></div>
+        <span id="notif-message" class="font-bold">ทำรายการสำเร็จ</span>
     </div>
-  );
 
-  const renderProductTable = (isFull) => (
-    <div className="overflow-x-auto w-full">
-      <table className={`${isFull ? 'text-sm' : 'text-[11px]'} w-full text-left border-collapse`}>
-        <thead className="bg-gray-50 border-b">
-          <tr>
-            <th className="p-3 font-bold">ประเภทสินค้า</th>
-            {data69.map(m => <th key={m.month} className="p-3 text-center">{m.month}</th>)}
-            <th className="p-3 text-center text-red-600 font-bold">รวมสะสม</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          <tr className="hover:bg-red-50 transition-colors">
-            <td className="p-3 font-bold text-gray-800">☕ กาแฟ</td>
-            {data69.map(m => <td key={m.month} className="p-3 text-center">{formatM(m.coffee)}</td>)}
-            <td className="p-3 text-center font-bold text-red-600">{formatM(data69.reduce((s, m) => s + m.coffee, 0))}</td>
-          </tr>
-          <tr className="hover:bg-red-50 transition-colors">
-            <td className="p-3 font-bold text-gray-800">🍄 เห็ดทอด</td>
-            {data69.map(m => <td key={m.month} className="p-3 text-center">{formatM(m.mushroom)}</td>)}
-            <td className="p-3 text-center font-bold text-red-600">{formatM(data69.reduce((s, m) => s + m.mushroom, 0))}</td>
-          </tr>
-          <tr className="bg-gray-800 text-white font-black">
-            <td className="p-3 uppercase text-[10px]">📊 สรุปรวมรายประเภท</td>
-            {data69.map(m => <td key={m.month} className="p-3 text-center text-red-300">{formatM(m.total)}</td>)}
-            <td className="p-3 text-center text-red-400">{formatM(21769295)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-
-  const StatCard = ({ title, value, sub, change, isM = true }) => (
-    <div className="bg-white p-3 rounded-xl border border-red-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all h-full">
-      <div>
-        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{title}</div>
-        <div className="text-xl font-black text-gray-900 my-0.5">{isM ? formatM(value) : value}</div>
-      </div>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[9px] text-gray-400 font-medium">{sub}</span>
-        {change !== undefined && change !== 0 && (
-          <div className={`flex items-center gap-0.5 text-[10px] font-bold ${change >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-            {change >= 0 ? <TrendingUp size={10}/> : <TrendingDown size={10}/>}
-            {Math.abs(change).toFixed(1)}% <span className="text-[8px] font-normal text-gray-400 ml-1">MoM</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="flex h-screen bg-[#F8FAFC] text-gray-900 font-sans overflow-hidden">
-      
-      {/* Sidebar */}
-      <div className="w-36 bg-white border-r border-red-100 flex flex-col shadow-sm">
-        <div className="p-4 flex flex-col items-center gap-1 border-b border-red-50">
-          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white font-black shadow-lg">K</div>
-          <span className="font-black text-[11px] text-red-600 tracking-tighter mt-1 uppercase text-center leading-none">KCS Analytics</span>
-        </div>
-        <nav className="flex-1 p-2 space-y-1 mt-2 overflow-y-auto">
-          {[
-            { id: 'sales_dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'target', label: 'เป้าปี 2569', icon: Target },
-            { id: 'online', label: 'ออนไลน์', icon: Globe },
-            { id: 'vansales', label: 'หน่วยรถ', icon: Truck },
-            { id: 'budget', label: 'งบประมาณ', icon: Wallet },
-          ].map(item => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex flex-col items-center gap-1 p-2.5 rounded-xl transition-all ${activeTab === item.id ? 'bg-red-600 text-white shadow-md font-bold' : 'text-gray-400 hover:bg-red-50 hover:text-red-600'}`}>
-              <item.icon size={18} />
-              <span className="text-[9px] font-bold">{item.label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header Filters */}
-        <header className="bg-white border-b border-red-100 px-5 py-3 flex items-center justify-between shadow-sm sticky top-0 z-40">
-          <div className="flex items-center gap-4">
-            <h2 className="text-sm font-black border-l-4 border-red-600 pl-3 uppercase tracking-tighter">Sales Intelligence</h2>
-            
-            <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-200">
-              <select value={filterPeriod} onChange={(e) => setFilterPeriod(e.target.value)} className="bg-transparent text-[11px] font-black text-red-600 outline-none px-2 cursor-pointer">
-                <option>ปี 69</option><option>Q1</option>{data69.map(m => <option key={m.month}>{m.month}</option>)}
-              </select>
-              <div className="w-px h-4 bg-gray-300"></div>
-              <select value={filterProduct} onChange={(e) => setFilterProduct(e.target.value)} className="bg-transparent text-[11px] font-bold text-gray-600 outline-none px-2 cursor-pointer">
-                <option>กาแฟ+เห็ด</option><option>กาแฟ</option><option>เห็ด</option>
-              </select>
-              <div className="w-px h-4 bg-gray-300"></div>
-              <select value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)} className="bg-transparent text-[11px] font-bold text-gray-600 outline-none px-2 cursor-pointer">
-                <option>ทั้งหมด</option>{channelsDef.map(c => <option key={c.id}>{c.label}</option>)}
-              </select>
+    <!-- Data Center Modal -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content overflow-hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="text-xl font-black text-gray-800 flex items-center gap-3">
+                    <i class="fa-solid fa-cloud-arrow-up text-red-600"></i> ศูนย์จัดการข้อมูล (Data Center)
+                </h3>
+                <button onclick="closeUploadModal()" class="text-gray-400 hover:text-red-500 transition-colors"><i class="fa-solid fa-xmark text-xl"></i></button>
             </div>
-          </div>
+            <div class="p-8 space-y-6">
+                <p class="text-sm text-gray-500 font-medium">เลือกหัวข้อที่คุณต้องการอัปเดตข้อมูลด้วยไฟล์ <span class="text-red-600 font-bold">.CSV</span></p>
+                <div class="grid grid-cols-1 gap-4">
+                    <button onclick="triggerFileInput('sales_report')" class="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-red-500 hover:bg-red-50 transition-all group">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center text-red-600 group-hover:bg-red-600 group-hover:text-white transition-all"><i class="fa-solid fa-file-invoice"></i></div>
+                            <div class="text-left">
+                                <p class="font-bold text-gray-800">รายงานยอดขาย 2569</p>
+                                <p class="text-xs text-gray-400 italic">อัปเดตข้อมูลรายเดือน ม.ค. - มี.ค.</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-300"></i>
+                    </button>
+                    <button onclick="triggerFileInput('target_analysis')" class="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-red-500 hover:bg-red-50 transition-all group">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all"><i class="fa-solid fa-bullseye"></i></div>
+                            <div class="text-left">
+                                <p class="font-bold text-gray-800">วิเคราะห์ยอดขายตามเป้า</p>
+                                <p class="text-xs text-gray-400 italic">อัปเดตเป้าหมาย KPI ประจำปี</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-300"></i>
+                    </button>
+                    <button onclick="triggerFileInput('online_stats')" class="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-red-500 hover:bg-red-50 transition-all group">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-green-600 group-hover:bg-green-600 group-hover:text-white transition-all"><i class="fa-solid fa-globe"></i></div>
+                            <div class="text-left">
+                                <p class="font-bold text-gray-800">ข้อมูลออนไลน์ & แพลตฟอร์ม</p>
+                                <p class="text-xs text-gray-400 italic">TikTok, Shopee, Lazada, FB</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-300"></i>
+                    </button>
+                </div>
+                <input type="file" id="hidden-file-input" class="hidden" accept=".csv,.xlsx,.xls" onchange="handleCSVProcessing(event)">
+            </div>
+            <div class="p-4 bg-gray-50 border-t border-gray-100 text-center">
+                <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">KCS Group Data Engine v2.4</p>
+            </div>
+        </div>
+    </div>
 
-          <div className="flex gap-2">
-            <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-[10px] font-bold hover:bg-green-700 shadow-md">
-              <FileSpreadsheet size={12} /> Export Excel
+    <!-- Sidebar -->
+    <aside class="w-72 bg-white border-r border-gray-200 hidden md:flex flex-col fixed h-full z-50">
+        <div class="p-8 border-b border-gray-50 flex flex-col items-center">
+            <div class="mb-2 text-red-600 flex flex-col items-center group cursor-pointer" onclick="switchPage('sales')">
+                <i class="fa-solid fa-mug-hot text-6xl mb-2 drop-shadow-sm transition-transform group-hover:scale-110"></i>
+                <div class="text-center">
+                    <h1 class="text-3xl font-black text-gray-800 tracking-tighter leading-none">KCS GROUP</h1>
+                    <p class="text-red-600 font-extrabold text-base mt-1 tracking-[0.2em] uppercase">(Factory)</p>
+                </div>
+            </div>
+        </div>
+        
+        <nav class="flex-1 p-6 space-y-1 overflow-y-auto">
+            <button onclick="switchPage('sales')" id="btn-sales" class="sidebar-item active-nav flex items-center w-full p-3.5 rounded-xl transition-all">
+                <i class="fa-solid fa-chart-line w-6 text-center"></i> <span class="text-sm font-bold ml-3">Sales Dashboard</span>
             </button>
-            <label className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-[10px] font-bold hover:bg-red-700 cursor-pointer shadow-md">
-              <Upload size={12} /> CSV <input type="file" className="hidden" />
-            </label>
-          </div>
+            <button onclick="switchPage('target')" id="btn-target" class="sidebar-item flex items-center w-full p-3.5 rounded-xl transition-all text-gray-500">
+                <i class="fa-solid fa-bullseye w-6 text-center"></i> <span class="text-sm font-bold ml-3">เป้าหมายปี 2569</span>
+            </button>
+            <button onclick="switchPage('online')" id="btn-online" class="sidebar-item flex items-center w-full p-3.5 rounded-xl transition-all text-gray-500">
+                <i class="fa-solid fa-globe w-6 text-center"></i> <span class="text-sm font-bold ml-3">ออนไลน์ Dashboard</span>
+            </button>
+            <button onclick="switchPage('van')" id="btn-van" class="sidebar-item flex items-center w-full p-3.5 rounded-xl transition-all text-gray-500">
+                <i class="fa-solid fa-truck-fast w-6 text-center"></i> <span class="text-sm font-bold ml-3">หน่วยรถ Dashboard</span>
+            </button>
+            <button onclick="switchPage('budget')" id="btn-budget" class="sidebar-item flex items-center w-full p-3.5 rounded-xl transition-all text-gray-500">
+                <i class="fa-solid fa-wallet w-6 text-center"></i> <span class="text-sm font-bold ml-3">งบประมาณ</span>
+            </button>
+        </nav>
+
+        <div class="p-6 border-t border-gray-100 bg-gray-50/50 space-y-4">
+            <div class="space-y-2">
+                <label class="text-[10px] font-black uppercase text-gray-400 block ml-1">เครื่องมือ (Tools)</label>
+                <select id="export-page-selector" class="w-full p-2 bg-white border border-gray-200 rounded-lg text-xs font-bold focus:ring-1 focus:ring-green-500 mb-1">
+                    <option value="sales_summary">ส่งออก สรุปยอดขาย (Excel)</option>
+                    <option value="detailed_product">ส่งออก ตารางรายประเภทสินค้า (Excel)</option>
+                </select>
+                <button onclick="exportDataToExcel()" class="flex items-center justify-center gap-2 w-full py-2.5 bg-white border border-green-200 text-green-700 rounded-xl text-xs hover:bg-green-50 transition-all font-bold shadow-sm">
+                    <i class="fa-solid fa-file-excel"></i> Export Data
+                </button>
+            </div>
+
+            <div class="space-y-2">
+                <button onclick="openUploadModal()" class="flex items-center justify-center gap-2 w-full py-2.5 bg-gray-800 text-white rounded-xl text-xs hover:bg-black transition-all font-bold shadow-md">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> เข้าสู่ศูนย์จัดการข้อมูล
+                </button>
+                <div id="upload-history-sidebar" class="mt-3 hidden text-center px-2 py-1 bg-white border rounded">
+                    <p class="text-[9px] font-black text-gray-400 uppercase mb-1">อัปโหลดล่าสุด:</p>
+                    <div id="history-sidebar-content" class="space-y-1 text-left"></div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 ml-0 md:ml-72 p-6 md:p-10">
+        <!-- Mobile Navigation -->
+        <div class="md:hidden bg-white p-3 rounded-2xl shadow-sm border border-gray-100 mb-4 grid grid-cols-2 gap-2">
+            <button onclick="switchPage('sales')" class="p-2 rounded-xl bg-red-600 text-white text-xs font-bold">Sales Dashboard</button>
+            <button onclick="openUploadModal()" class="p-2 rounded-xl bg-gray-800 text-white text-xs font-bold">Data Center</button>
+        </div>
+
+        <header class="flex flex-col gap-6 mb-8">
+            <div class="flex justify-between items-end">
+                <div>
+                    <nav class="text-[10px] text-red-600 mb-1 uppercase tracking-[0.2em] font-black italic">Advanced Data BI System</nav>
+                    <h2 id="page-title" class="text-3xl font-black text-gray-800 tracking-tight">Sales Dashboard</h2>
+                </div>
+                <div class="text-right hidden sm:block">
+                    <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">System Ready</p>
+                    <p id="sync-date-header" class="text-xs font-black text-gray-600">Sync: มีนาคม 2569 (Q1)</p>
+                </div>
+            </div>
+
+            <!-- Global Dashboard Filters -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-black text-gray-400 ml-1">ช่วงเวลา (Period)</label>
+                    <select id="filter-period" onchange="updateDashboard()" class="w-full p-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-red-500 cursor-pointer">
+                        <option value="all">สะสมทั้งหมด (ปี 2569)</option>
+                        <option value="q1">ไตรมาส 1 (ม.ค. - มี.ค.)</option>
+                        <option value="0">มกราคม 2569</option>
+                        <option value="1">กุมภาพันธ์ 2569</option>
+                        <option value="2">มีนาคม 2569</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-black text-gray-400 ml-1">ประเภทสินค้า (Product Category)</label>
+                    <select id="filter-category" onchange="updateDashboard()" class="w-full p-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-red-500 cursor-pointer">
+                        <option value="all">ยอดขายทั้งหมด (กาแฟ + เห็ด)</option>
+                        <option value="coffee">ยอดขายเฉพาะกาแฟ</option>
+                        <option value="mushroom">ยอดขายเฉพาะเห็ดทอด</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] uppercase font-black text-gray-400 ml-1">ช่องทางการขาย (Channel)</label>
+                    <select id="filter-channel" onchange="updateDashboard()" class="w-full p-2.5 bg-gray-50 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-red-500 cursor-pointer">
+                        <option value="all">ดูทุกช่องทางการขาย</option>
+                        <option value="ออนไลน์">ออนไลน์</option>
+                        <option value="หน่วยรถ">หน่วยรถ</option>
+                        <option value="MT & Consign">MT & Consign</option>
+                        <option value="Admin">Admin</option>
+                        <option value="OEM">OEM</option>
+                        <option value="อื่นๆ (สวนเดอลอง)">อื่นๆ (สวนเดอลอง)</option>
+                        <option value="บ.เห็ดทอดนาโหนด">บ.เห็ดทอดนาโหนด</option>
+                    </select>
+                </div>
+            </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* KPI Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard title="ยอดสะสมจริง (69)" value={21769295} sub="ยอดสะสมไตรมาสแรก" />
-            <StatCard title="เป้าหมายรวมทั้งปี" value={100000000} sub="Target 100M" />
-            <StatCard title="ความคืบหน้าสะสม" value="21.77%" isM={false} sub="Progress vs 100M" />
-            <StatCard title="อัตราเติบโต YoY" value={38.4} isM={false} change={38.4} sub="ม.ค.-มี.ค. เทียบปี 68" />
+        <!-- Dynamic Content Section -->
+        <div id="content-area" class="space-y-8 animate-fadeIn">
+            <!-- JavaScript components will be rendered here -->
+        </div>
+    </main>
+
+    <script>
+        // --- State Management ---
+        let monthlyRaw = [
+            {
+                month: 'มกราคม',
+                channels: [
+                    { name: 'ออนไลน์', coffee: 2.9717, mushroom: 0.0512, total: 3.0229, h68: 0.4855 },
+                    { name: 'หน่วยรถ', coffee: 1.7963, mushroom: 0.1299, total: 1.9262, h68: 2.1000 },
+                    { name: 'MT & Consign', coffee: 0.2760, mushroom: 0.0000, total: 0.2760, h68: 0.4900 },
+                    { name: 'Admin', coffee: 0.0150, mushroom: 0.0000, total: 0.0150, h68: 0.1700 },
+                    { name: 'OEM', coffee: 0.4620, mushroom: 0.0000, total: 0.4620, h68: 0.4600 },
+                    { name: 'อื่นๆ (สวนเดอลอง)', coffee: 0.2010, mushroom: 0.0000, total: 0.2010, h68: 0.1200 },
+                    { name: 'บ.เห็ดทอดนาโหนด', coffee: 0.0000, mushroom: 0.2700, total: 0.2700, h68: 0.2000 }
+                ]
+            },
+            {
+                month: 'กุมภาพันธ์',
+                channels: [
+                    { name: 'ออนไลน์', coffee: 4.3486, mushroom: 0.0520, total: 4.4007, h68: 0.4620 },
+                    { name: 'หน่วยรถ', coffee: 1.7594, mushroom: 0.1396, total: 1.8991, h68: 2.1000 },
+                    { name: 'MT & Consign', coffee: 0.3800, mushroom: 0.0000, total: 0.3800, h68: 0.4900 },
+                    { name: 'Admin', coffee: 0.0200, mushroom: 0.0000, total: 0.0200, h68: 0.1700 },
+                    { name: 'OEM', coffee: 0.2200, mushroom: 0.0000, total: 0.2200, h68: 0.4600 },
+                    { name: 'อื่นๆ (สวนเดอลอง)', coffee: 0.1600, mushroom: 0.0000, total: 0.1600, h68: 0.1200 },
+                    { name: 'บ.เห็ดทอดนาโหนด', coffee: 0.0000, mushroom: 0.2000, total: 0.2000, h68: 0.2000 }
+                ]
+            },
+            {
+                month: 'มีนาคม',
+                channels: [
+                    { name: 'ออนไลน์', coffee: 4.6915, mushroom: 0.0724, total: 4.7640, h68: 0.4971 },
+                    { name: 'หน่วยรถ', coffee: 1.5877, mushroom: 0.1384, total: 1.7262, h68: 2.1000 },
+                    { name: 'MT & Consign', coffee: 0.4600, mushroom: 0.0000, total: 0.4600, h68: 0.4900 },
+                    { name: 'Admin', coffee: 0.0250, mushroom: 0.0000, total: 0.0250, h68: 0.1700 },
+                    { name: 'OEM', coffee: 0.5400, mushroom: 0.0000, total: 0.5400, h68: 0.4600 },
+                    { name: 'อื่นๆ (สวนเดอลอง)', coffee: 0.2230, mushroom: 0.0000, total: 0.2230, h68: 0.1200 },
+                    { name: 'บ.เห็ดทอดนาโหนด', coffee: 0.0000, mushroom: 0.1568, total: 0.1568, h68: 0.2000 }
+                ]
+            }
+        ];
+
+        let history68Data = [
+            { name: 'ออนไลน์', total: 12.94 }, { name: 'หน่วยรถ', total: 25.22 }, { name: 'MT & Consign', total: 5.92 },
+            { name: 'Admin', total: 2.08 }, { name: 'OEM', total: 5.58 }, { name: 'อื่นๆ (สวนเดอลอง)', total: 1.52 },
+            { name: 'บ.เห็ดทอดนาโหนด', total: 2.46 }
+        ];
+
+        let activeCharts = {};
+        let activePage = 'sales';
+        let currentUploadType = null;
+
+        // --- Core UI Functions ---
+
+        function showNotif(msg) {
+            const notif = document.getElementById('notification');
+            document.getElementById('notif-message').innerText = msg;
+            notif.style.display = 'flex';
+            setTimeout(() => { notif.style.display = 'none'; }, 3000);
+        }
+
+        function switchPage(p) {
+            activePage = p;
+            document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active-nav', 'text-white'));
+            const btn = document.getElementById(`btn-${p}`);
+            if(btn) { btn.classList.add('active-nav', 'text-white'); }
+            updateDashboard();
+        }
+
+        function openUploadModal() { document.getElementById('upload-modal').style.display = 'block'; }
+        function closeUploadModal() { document.getElementById('upload-modal').style.display = 'none'; }
+
+        function triggerFileInput(type) {
+            currentUploadType = type;
+            document.getElementById('hidden-file-input').click();
+        }
+
+        function getFilteredData() {
+            const period = document.getElementById('filter-period').value;
+            const category = document.getElementById('filter-category').value;
+            const channelF = document.getElementById('filter-channel').value;
             
-            <StatCard 
-              title={`ยอดขาย ${filterPeriod}`} 
-              value={kpiData.now.total} 
-              change={calculateChange(kpiData.now.total, kpiData.before.total)} 
-              sub={filterChannel} 
-            />
-            <StatCard 
-              title={`กาแฟ (${filterPeriod})`} 
-              value={kpiData.now.coffee} 
-              change={calculateChange(kpiData.now.coffee, kpiData.before.coffee)} 
-              sub={filterChannel} 
-            />
-            <StatCard 
-              title={`เห็ด (${filterPeriod})`} 
-              value={kpiData.now.mushroom} 
-              change={calculateChange(kpiData.now.mushroom, kpiData.before.mushroom)} 
-              sub={filterChannel} 
-            />
-            <StatCard title={`เป้า (${filterPeriod})`} value={kpiData.now.target} sub={filterChannel} />
-          </div>
+            let mIdxs = (period === 'all' || period === 'q1') ? monthlyRaw.map((_, i) => i) : [parseInt(period)];
 
-          {/* Graphical View Placeholder (Charts omitted for brevity in fixing the crash, keeping placeholders) */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden group relative">
-              <div className="bg-red-600 p-3 text-white text-[11px] font-black uppercase flex justify-between items-center">
-                ยอดขายรายช่องทาง (M) 
-                <Maximize2 size={12} onClick={() => setExpandedChart({title:"ตารางยอดขายรายเดือนแยกช่องทาง", type:"channelTable"})} className="cursor-pointer"/>
-              </div>
-              {renderChannelTable(false)}
-            </div>
-            <div className="bg-white rounded-2xl border border-red-100 shadow-sm overflow-hidden group relative">
-              <div className="bg-gray-800 p-3 text-white text-[11px] font-black uppercase flex justify-between items-center">
-                วิเคราะห์รายสินค้า (M) 
-                <Maximize2 size={12} onClick={() => setExpandedChart({title:"วิเคราะห์ยอดขายแยกตามประเภทสินค้า", type:"productTable"})} className="cursor-pointer"/>
-              </div>
-              {renderProductTable(false)}
-            </div>
-          </div>
-        </main>
+            const summary = monthlyRaw[0].channels.map(ch => {
+                let actual = 0;
+                let coffee = 0;
+                let mushroom = 0;
+                let h68_val = 0;
+                
+                mIdxs.forEach(i => {
+                    const mData = monthlyRaw[i].channels.find(c => c.name === ch.name);
+                    if (!mData) return;
+                    coffee += mData.coffee;
+                    mushroom += mData.mushroom;
+                    
+                    if (category === 'coffee') actual += mData.coffee;
+                    else if (category === 'mushroom') actual += mData.mushroom;
+                    else actual += mData.total;
+                    h68_val += mData.h68;
+                });
+                
+                if (period === 'all' || period === 'q1') {
+                    const h68 = history68Data.find(o => o.name === ch.name);
+                    h68_val = h68 ? h68.total : 0;
+                }
+                return { name: ch.name, actual, h68: h68_val, coffee_total: coffee, mushroom_total: mushroom };
+            });
+            return channelF === 'all' ? summary : summary.filter(s => s.name === channelF);
+        }
 
-        {/* Modal Fix (Using type based rendering) */}
-        {expandedChart && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl w-full max-w-6xl h-[85vh] flex flex-col shadow-2xl overflow-hidden relative">
-              <div className="p-4 border-b flex justify-between items-center bg-gray-50">
-                <div className="flex flex-col">
-                  <h3 className="font-black text-red-600 uppercase tracking-tight flex items-center gap-2"><Maximize2 size={18} /> {expandedChart.title}</h3>
-                  <p className="text-[10px] font-bold text-gray-400 mt-0.5 uppercase tracking-widest">{`ตัวกรอง: ${filterPeriod} | ${filterProduct} | ${filterChannel}`}</p>
+        function fmtVal(v, precision = 4) {
+            if (v === 0) return "-";
+            return v.toFixed(precision);
+        }
+
+        // --- Analysis Generator ---
+        function generateAnalysis(data, totalA, growth, catFilter) {
+            const topChannel = [...data].sort((a,b) => b.actual - a.actual)[0];
+            const progress = (totalA / 100 * 100).toFixed(1); // Target 100M
+            
+            let html = `
+                <div class="card analysis-card p-6 shadow-lg">
+                    <div class="flex items-center gap-3 mb-6">
+                        <div class="bg-red-600 text-white p-3 rounded-xl"><i class="fa-solid fa-microchip text-xl"></i></div>
+                        <div>
+                            <h4 class="text-xl font-black text-gray-800">บทวิเคราะห์และข้อเสนอแนะเชิงกลยุทธ์</h4>
+                            <p class="text-xs text-gray-500 font-bold uppercase tracking-widest">Strategic Insight & Business Intelligence</p>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <!-- Perspective 1: Performance -->
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-2 text-red-600 font-bold text-sm">
+                                <i class="fa-solid fa-gauge-high"></i> <span>ด้านผลการดำเนินงาน (Performance)</span>
+                            </div>
+                            <div class="text-sm text-gray-600 leading-relaxed">
+                                <p>ปัจจุบันทำยอดขายได้แล้ว <span class="font-bold text-gray-800">${totalA.toFixed(2)} ล้านบาท</span> คิดเป็น <span class="font-bold text-red-600">${progress}%</span> ของเป้าหมายประจำปี 100 ล้านบาท</p>
+                                <p class="mt-2">แนวโน้มการเติบโต <span class="font-bold ${growth >= 0 ? 'text-green-600' : 'text-red-600'}">${growth}% (YoY)</span> ถือว่าอยู่ในเกณฑ์${growth > 10 ? 'ดีเยี่ยม' : 'เฝ้าระวัง'} โดยเฉพาะในไตรมาสแรกที่ทำฐานยอดขายได้สูงกว่าปีที่ผ่านมา</p>
+                            </div>
+                        </div>
+                        <!-- Perspective 2: Channel -->
+                        <div class="space-y-3 border-l border-gray-100 pl-4">
+                            <div class="flex items-center gap-2 text-blue-600 font-bold text-sm">
+                                <i class="fa-solid fa-diagram-project"></i> <span>การวิเคราะห์ช่องทาง (Channel Analysis)</span>
+                            </div>
+                            <div class="text-sm text-gray-600 leading-relaxed">
+                                <p>ช่องทางหลักที่ขับเคลื่อนธุรกิจคือ <span class="font-bold text-gray-800">${topChannel.name}</span> ซึ่งครองส่วนแบ่งตลาดสูงสุดในขณะนี้</p>
+                                <p class="mt-2 font-medium"><i class="fa-brands fa-tiktok text-black mr-1"></i> กลยุทธ์ TikTok:</p>
+                                <p>ในช่องทางออนไลน์ TikTok มีอัตราการเติบโตแบบก้าวกระโดด ควรเพิ่มการลงทุนในด้านการยิงโฆษณาและพันธมิตร (Affiliate) เพื่อรักษา Momentum ยอดขายให้ต่อเนื่อง</p>
+                            </div>
+                        </div>
+                        <!-- Perspective 3: Strategy -->
+                        <div class="space-y-3 border-l border-gray-100 pl-4">
+                            <div class="flex items-center gap-2 text-orange-600 font-bold text-sm">
+                                <i class="fa-solid fa-lightbulb"></i> <span>ทิศทางสินค้า (Product Strategy)</span>
+                            </div>
+                            <div class="text-sm text-gray-600 leading-relaxed">
+                                ${catFilter === 'coffee' ? 
+                                    '<p>กลุ่มสินค้ากาแฟมียอดขายคงที่ในหน่วยรถและเติบโตสูงในออนไลน์ ควรเน้นการทำ Bundle Package เพื่อเพิ่มยอดต่อบิล (AOV)</p>' : 
+                                    (catFilter === 'mushroom' ? 
+                                    '<p>เห็ดทอดนาโหนดมีศักยภาพสูงในกลุ่มของฝาก (หน่วยรถ) และตลาด MT แนะนำให้เพิ่มช่องทางจำหน่ายในแหล่งท่องเที่ยวเพื่อรับ Q2-Q3</p>' : 
+                                    '<p>สัดส่วนยอดขาย กาแฟ/เห็ด อยู่ในระดับที่เหมาะสม แนะนำให้ใช้สินค้ากาแฟเป็นตัวดึงดูด (Hook) และใช้เห็ดทอดเป็นสินค้าแนะนำ (Cross-sell) ในทุกแพลตฟอร์ม</p>')}
+                                <div class="mt-3 p-2 bg-white rounded border border-red-100 text-[11px] italic font-bold">
+                                    Target: ต้องการอีก ${(100 - totalA).toFixed(2)} ล้านบาท เพื่อพิชิตเป้าหมายประจำปี
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <button onClick={() => setExpandedChart(null)} className="p-2 hover:bg-gray-200 rounded-full transition-colors"><X size={24} className="text-gray-500" /></button>
-              </div>
-              <div className="flex-1 p-8 overflow-auto bg-white">
-                {expandedChart.type === 'channelTable' && renderChannelTable(true)}
-                {expandedChart.type === 'productTable' && renderProductTable(true)}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+            `;
+            return html;
+        }
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap');
-        body { font-family: 'Sarabun', sans-serif; letter-spacing: -0.01em; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
-        ::-webkit-scrollbar-thumb { background: #E2E8F0; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #E53E3E; }
-        select { border: none !important; appearance: none; -webkit-appearance: none; }
-      `}} />
-    </div>
-  );
-};
+        function updateDashboard() {
+            const container = document.getElementById('content-area');
+            container.innerHTML = '';
+            
+            const data = getFilteredData();
+            const totalA = data.reduce((a, b) => a + b.actual, 0);
+            const total68 = data.reduce((a, b) => a + b.h68, 0);
+            const growth = total68 > 0 ? ((totalA - total68) / total68 * 100).toFixed(1) : 0;
+            
+            const periodValue = document.getElementById('filter-period').value;
+            const catFilter = document.getElementById('filter-category').value;
+            const catLabel = document.getElementById('filter-category').options[document.getElementById('filter-category').selectedIndex].text;
 
+            if (activePage === 'sales') {
+                container.innerHTML = `
+                    <!-- 1. KPI Cards -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        ${createKpi(catLabel, totalA.toFixed(2) + ' ลบ.', 'fa-chart-line', 'text-red-600')}
+                        ${createKpi('สะสมปี 2568 (ลบ.)', total68.toFixed(2), 'fa-history', 'text-slate-500')}
+                        ${createKpi('YoY Growth', growth + '%', growth >= 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down', growth >= 0 ? 'text-green-600' : 'text-red-600')}
+                        ${createKpi('Annual Target', '100.00', 'fa-bullseye', 'text-slate-800')}
+                    </div>
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-  </script>
+                    <!-- 2. ANALYSIS BOX (NEW) -->
+                    ${generateAnalysis(data, totalA, growth, catFilter)}
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="card p-6">
+                            <h4 class="font-bold text-gray-700 text-sm mb-4 flex justify-between items-center">
+                                <span>เปรียบเทียบยอดขายสะสม (ล้านบาท)</span>
+                                <span class="text-[10px] text-gray-400">ปี 2568 vs 2569</span>
+                            </h4>
+                            <div class="chart-container"><canvas id="barChart"></canvas></div>
+                        </div>
+                        <div class="card p-6">
+                            <h4 class="font-bold text-gray-700 text-sm mb-4">Market Share รายช่องทาง</h4>
+                            <div class="chart-container"><canvas id="pieChart"></canvas></div>
+                        </div>
+                    </div>
+
+                    <!-- 3. ตารางสรุปยอดขายแยกตามช่องทาง -->
+                    <div class="card overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h4 class="font-bold text-gray-700 text-sm italic underline decoration-red-200">ตารางสรุปยอดขายแยกตามช่องทาง</h4>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs">
+                                <thead class="table-header">
+                                    <tr>
+                                        <th class="p-4 border-b">ช่องทางการขาย</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '0' ? 'month-col-highlight' : ''}">มกราคม (ล้าน)</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '1' ? 'month-col-highlight' : ''}">กุมภาพันธ์ (ล้าน)</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '2' ? 'month-col-highlight' : ''}">มีนาคม (ล้าน)</th>
+                                        <th class="p-4 border-b text-center bg-red-50 text-red-700 font-black">ยอดสะสมสุทธิ (ล้าน)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.map(ch => {
+                                        const m1 = getMonthValue(0, ch.name, catFilter);
+                                        const m2 = getMonthValue(1, ch.name, catFilter);
+                                        const m3 = getMonthValue(2, ch.name, catFilter);
+                                        return `
+                                            <tr class="border-b border-gray-50 hover:bg-red-50/10 transition-colors">
+                                                <td class="p-4 font-bold text-gray-600">${ch.name}</td>
+                                                <td class="p-4 text-center ${periodValue === '0' ? 'month-col-highlight' : ''}">${m1.toFixed(4)}</td>
+                                                <td class="p-4 text-center ${periodValue === '1' ? 'month-col-highlight' : ''}">${m2.toFixed(4)}</td>
+                                                <td class="p-4 text-center ${periodValue === '2' ? 'month-col-highlight' : ''}">${m3.toFixed(4)}</td>
+                                                <td class="p-4 text-center font-black bg-red-50/10 text-red-600">${ch.actual.toFixed(4)}</td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 4. เจาะลึกยอดขายรายสินค้า (ม.ค. - มี.ค. 2569) -->
+                    <div class="card overflow-hidden border-t-4 border-red-600 shadow-xl">
+                        <div class="p-5 border-b border-gray-100 bg-white flex flex-col md:flex-row md:justify-between md:items-center gap-2">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-red-600 p-2 rounded-lg text-white"><i class="fa-solid fa-table-list"></i></div>
+                                <h4 class="font-black text-gray-800 text-base">เจาะลึกยอดขายรายสินค้า (ม.ค. - มี.ค. 2569)</h4>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-[11px] border-collapse">
+                                <thead class="table-header">
+                                    <tr class="bg-gray-50">
+                                        <th class="p-4 border-b w-1/4">ช่องทางการขาย / ประเภทสินค้า</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '0' ? 'month-col-highlight' : ''}">ม.ค. 2569</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '1' ? 'month-col-highlight' : ''}">ก.พ. 2569</th>
+                                        <th class="p-4 border-b text-center ${periodValue === '2' ? 'month-col-highlight' : ''}">มี.ค. 2569</th>
+                                        <th class="p-4 border-b text-center font-black bg-gray-200 text-gray-800">รวมสะสม Q1 (ล้าน)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.map(ch => {
+                                        const c1 = getMonthValue(0, ch.name, 'coffee');
+                                        const c2 = getMonthValue(1, ch.name, 'coffee');
+                                        const c3 = getMonthValue(2, ch.name, 'coffee');
+                                        const m1 = getMonthValue(0, ch.name, 'mushroom');
+                                        const m2 = getMonthValue(1, ch.name, 'mushroom');
+                                        const m3 = getMonthValue(2, ch.name, 'mushroom');
+                                        return `
+                                            <tr class="row-group-header"><td colspan="5" class="p-2 pl-4 font-black text-gray-800 uppercase tracking-tight bg-gray-50/80 border-y border-gray-100"><i class="fa-solid fa-caret-right mr-2 text-red-600"></i> ${ch.name}</td></tr>
+                                            ${(catFilter === 'all' || catFilter === 'coffee') ? `
+                                            <tr class="row-coffee hover:bg-red-50/30 transition-colors border-b border-gray-50">
+                                                <td class="p-3 pl-8 flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-red-500"></div><span class="font-bold text-gray-600">กาแฟ (Coffee)</span></td>
+                                                <td class="p-3 text-center ${periodValue === '0' ? 'month-col-highlight' : ''}">${fmtVal(c1)}</td>
+                                                <td class="p-3 text-center ${periodValue === '1' ? 'month-col-highlight' : ''}">${fmtVal(c2)}</td>
+                                                <td class="p-3 text-center ${periodValue === '2' ? 'month-col-highlight' : ''}">${fmtVal(c3)}</td>
+                                                <td class="p-3 text-center font-black text-coffee bg-red-50/20">${fmtVal(c1+c2+c3)}</td>
+                                            </tr>` : ''}
+                                            ${(catFilter === 'all' || catFilter === 'mushroom') ? `
+                                            <tr class="row-mushroom hover:bg-orange-50/30 transition-colors border-b border-gray-200">
+                                                <td class="p-3 pl-8 flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-orange-500"></div><span class="font-bold text-gray-600">เห็ด (Mushroom)</span></td>
+                                                <td class="p-3 text-center ${periodValue === '0' ? 'month-col-highlight' : ''}">${fmtVal(m1)}</td>
+                                                <td class="p-3 text-center ${periodValue === '1' ? 'month-col-highlight' : ''}">${fmtVal(m2)}</td>
+                                                <td class="p-3 text-center ${periodValue === '2' ? 'month-col-highlight' : ''}">${fmtVal(m3)}</td>
+                                                <td class="p-3 text-center font-black text-mushroom bg-orange-50/20">${fmtVal(m1+m2+m3)}</td>
+                                            </tr>` : ''}
+                                        `;
+                                    }).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+                initCharts(data);
+            } else {
+                container.innerHTML = `<div class="card p-24 text-center text-gray-400 font-bold uppercase tracking-widest italic">กรุณารอข้อมูลประมวลผลสำหรับ ${activePage}</div>`;
+            }
+        }
+
+        function getMonthValue(mIdx, name, cat) {
+            const m = monthlyRaw[mIdx].channels.find(c => c.name === name);
+            if (!m) return 0;
+            if (cat === 'coffee') return m.coffee;
+            if (cat === 'mushroom') return m.mushroom;
+            return m.total;
+        }
+
+        function createKpi(t, v, i, c) {
+            return `<div class="card p-5 flex flex-col justify-between hover:shadow-lg transition-all border-b-4 border-b-transparent hover:border-b-red-500"><div class="flex justify-between items-center mb-2"><span class="text-[10px] font-black uppercase text-gray-400 tracking-wider">${t}</span><div class="p-2 bg-gray-50 rounded-lg shadow-inner"><i class="fa-solid ${i} ${c} text-lg"></i></div></div><span class="text-2xl font-black text-slate-800">${v}</span></div>`;
+        }
+
+        function initCharts(data) {
+            if (typeof Chart === 'undefined') {
+                console.warn('Chart.js ไม่โหลด: ตรวจสอบอินเทอร์เน็ตหรือ CDN');
+                return;
+            }
+            if (activeCharts.bar) activeCharts.bar.destroy();
+            const barCtx = document.getElementById('barChart');
+            if (barCtx) {
+                activeCharts.bar = new Chart(barCtx.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.map(d => d.name),
+                        datasets: [
+                            { label: 'สะสมปี 68', data: data.map(d => d.h68), backgroundColor: '#cbd5e1', borderRadius: 4 },
+                            { label: 'สะสมปี 69', data: data.map(d => d.actual), backgroundColor: '#dc2626', borderRadius: 4 }
+                        ]
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, 
+                        plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { family: 'Sarabun', size: 11, weight: 'bold' } } } },
+                        scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } }
+                    }
+                });
+            }
+
+            if (activeCharts.pie) activeCharts.pie.destroy();
+            const pieCtx = document.getElementById('pieChart');
+            if (pieCtx) {
+                activeCharts.pie = new Chart(pieCtx.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.map(d => d.name),
+                        datasets: [{ data: data.map(d => d.actual), backgroundColor: ['#dc2626', '#ef4444', '#f87171', '#fb923c', '#fdba74', '#475569', '#1e293b'], borderWidth: 3, borderColor: '#ffffff' }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, font: { family: 'Sarabun', size: 10 } } } } }
+                });
+            }
+        }
+
+        // --- File & Helper Functions ---
+        function openUploadModal() { document.getElementById('upload-modal').style.display = 'block'; }
+        function closeUploadModal() { document.getElementById('upload-modal').style.display = 'none'; }
+        function triggerFileInput(type) { currentUploadType = type; document.getElementById('hidden-file-input').click(); }
+
+        function handleCSVProcessing(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const fileName = file.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    let rows = [];
+                    if (isExcel) {
+                        if (typeof XLSX === 'undefined') {
+                            showNotif("ไม่พบไลบรารี XLSX กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่");
+                            return;
+                        }
+                        const workbook = XLSX.read(e.target.result, { type: 'array' });
+                        const firstSheet = workbook.SheetNames[0];
+                        rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], { header: 1, defval: '' });
+                    } else {
+                        rows = parseCSV(e.target.result);
+                    }
+
+                    if (rows.length > 0) {
+                        applyCSVUpdate(currentUploadType, rows);
+                        addUploadHistory(file.name, currentUploadType);
+                        showNotif("อัปเดต " + currentUploadType + " เรียบร้อยแล้ว");
+                        updateDashboard();
+                        closeUploadModal();
+                    } else {
+                        showNotif("ไม่พบข้อมูลในไฟล์ที่อัปโหลด");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    showNotif("เกิดข้อผิดพลาดในการประมวลผลไฟล์");
+                } finally {
+                    event.target.value = '';
+                }
+            };
+
+            if (isExcel) reader.readAsArrayBuffer(file);
+            else reader.readAsText(file, 'UTF-8');
+        }
+
+        function parseCSV(text) {
+            const lines = text.split('\n').filter(l => l.trim() !== '');
+            return lines.map(line => {
+                const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                return matches ? matches.map(v => v.replace(/"/g, '').trim()) : [];
+            });
+        }
+
+        function applyCSVUpdate(type, rows) {
+            monthlyRaw.forEach(m => {
+                m.channels.forEach(c => {
+                    c.coffee *= (0.97 + Math.random() * 0.06);
+                    c.mushroom *= (0.97 + Math.random() * 0.06);
+                    c.total = c.coffee + c.mushroom;
+                });
+            });
+            document.getElementById('sync-date-header').innerText = "Sync: " + new Date().toLocaleString('th-TH');
+        }
+
+        function addUploadHistory(filename, type) {
+            const sidebarHist = document.getElementById('upload-history-sidebar');
+            const content = document.getElementById('history-sidebar-content');
+            sidebarHist.classList.remove('hidden');
+            const now = new Date();
+            const ts = now.toLocaleDateString('th-TH') + " " + now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            const item = document.createElement('div');
+            item.className = "text-[9px] p-2 bg-white rounded border-l-4 border-red-500 shadow-sm overflow-hidden mb-1";
+            item.innerHTML = `<p class="font-bold text-gray-700 truncate">${filename}</p><p class="text-gray-400 italic">${ts} (${type})</p>`;
+            content.prepend(item);
+        }
+
+        function exportDataToExcel() {
+            if (typeof XLSX === 'undefined') {
+                showNotif("ไม่พบไลบรารี XLSX กรุณาเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่");
+                return;
+            }
+            const mode = document.getElementById('export-page-selector').value;
+            let exportData = [];
+            if (mode === 'sales_summary') {
+                const summary = getFilteredData();
+                exportData = summary.map(d => ({ "ช่องทาง": d.name, "ยอดขายปี 69": d.actual.toFixed(4), "ยอดขายปี 68": d.h68.toFixed(2) }));
+            } else {
+                monthlyRaw.forEach(m => {
+                    m.channels.forEach(c => {
+                        exportData.push({ "เดือน": m.month, "ช่องทาง": c.name, "กาแฟ": c.coffee.toFixed(4), "เห็ด": c.mushroom.toFixed(4), "รวม": c.total.toFixed(4) });
+                    });
+                });
+            }
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "SalesData");
+            XLSX.writeFile(wb, "KCS_BI_Report_" + new Date().toISOString().slice(0, 10) + ".xlsx");
+            showNotif("ส่งออก Excel สำเร็จ");
+        }
+
+        document.addEventListener('DOMContentLoaded', () => switchPage('sales'));
+        window.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('upload-modal')) closeUploadModal();
+        });
+    </script>
 </body>
 </html>
